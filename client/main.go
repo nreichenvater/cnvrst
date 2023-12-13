@@ -11,6 +11,7 @@ import (
 const (
 	PORT = "10050"
 	PREFIX_NICKNAME = "HFtgBh2Kqf8Gfpkl6N2Coskw8i6qHO0D"
+	PROTOCOL_SUFFIX = "\r\n\r\n"
 )
 
 type MessageType int
@@ -26,7 +27,7 @@ type Message struct {
 }
 
 func receiveMessages(conn net.Conn, messages chan Message) {
-	buf := make([]byte,1024)
+	buf := make([]byte,256)
 	for {
 		len, err := conn.Read(buf)
 		if err != nil {
@@ -42,6 +43,24 @@ func receiveMessages(conn net.Conn, messages chan Message) {
 		}
 		fmt.Println(msg)
 	}
+}
+
+func getNickname() string {
+	fmt.Println("Welcome to the chat! Please enter a nickname...")
+	reader := bufio.NewReader(os.Stdin)
+	input := ""
+	valid := false
+	for ; valid == false ; {
+		input, _ = reader.ReadString('\n')
+		input = strings.TrimRight(input, "\r\n")
+		if len := len(input); len < 1 || len > 40 {
+			fmt.Println("The nickname must have a length between 1 and 40 characters...")
+			
+		} else {
+			valid = true
+		}
+	}
+	return fmt.Sprintf("%s%s%s",PREFIX_NICKNAME,input,PROTOCOL_SUFFIX)
 }
 
 func main() {
@@ -60,11 +79,7 @@ func main() {
 	for {
 		msg := <- messages
 		if msg.Type == NicknamePrompt {
-			fmt.Println("Welcome to the chat! Please enter a nickname...")
-			reader := bufio.NewReader(os.Stdin)
-			input, _ := reader.ReadString('\n')
-			nickname := fmt.Sprintf("%s%s",PREFIX_NICKNAME,input)
-			nickname = strings.TrimRight(nickname, "\r\n")
+			nickname := getNickname()
 			conn.Write([]byte(nickname))
 			break
 		}
@@ -75,6 +90,7 @@ func main() {
 		reader := bufio.NewReader(os.Stdin)
 		text, _ := reader.ReadString('\n')
 		text = strings.TrimRight(text, "\r\n")
+		text = fmt.Sprintf("%s%s",text,PROTOCOL_SUFFIX)
 		conn.Write([]byte(text))
 	}
 }

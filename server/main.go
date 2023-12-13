@@ -5,14 +5,12 @@ import (
 	"net"
 	"strings"
 	"time"
-	//"io"
-	//"os"
-	//"unicode"
 )
 
 const (
 	PORT = "10050"
 	PREFIX_NICKNAME = "HFtgBh2Kqf8Gfpkl6N2Coskw8i6qHO0D"
+	PROTOCOL_SUFFIX = "\r\n\r\n"
 )
 
 type MessageType int
@@ -34,12 +32,6 @@ type Client struct {
 	Nickname string
 	color string
 }
-
-/*
-	TODO
-		- protokoll überlegen wenn username kommt (trennzeichenkette, start, ende)
-		- senden: farbe von user + timestamp + text
-*/
 
 func runServer(messages chan Message) {
 	clients := map[string]*Client{}
@@ -63,7 +55,10 @@ func runServer(messages chan Message) {
 			fmt.Println(msg.Client.Nickname)
 		case NewMessage:
 			now := time.Now()
-			s := fmt.Sprintf("%s [%s]: %s",now.Format(time.RFC3339),msg.Client.Nickname,msg.Text)
+			timestamp := fmt.Sprintf("%d-%02d-%02d %02d:%02d:%02d", 
+				now.Year(), now.Month(), now.Day(), 
+				now.Hour(), now.Minute(), now.Second()) 
+			s := fmt.Sprintf("%s [%s]: %s",timestamp,msg.Client.Nickname,msg.Text)
 			fmt.Println(s)
 			for _,client := range clients {
 				if client.Conn.RemoteAddr().String() != addr {
@@ -74,19 +69,9 @@ func runServer(messages chan Message) {
 	}
 }
 
-/*func prepareNickname(input string) string {
-	s := ""
-	for _,c := range input {
-		if unicode.IsPrint(c) { //necessary to remove blank runes that produce new lines...
-			s = s + string(c)
-		}
-	}
-	return s
-}*/
-
 func registerClient(conn net.Conn, messages chan Message) {
 	defer conn.Close()
-	buff := make([]byte,256)
+	buff := make([]byte,32)
 	messages <- Message{
 		Type: ClientConnected,
 		Client: Client{Conn:conn},
@@ -96,19 +81,24 @@ func registerClient(conn net.Conn, messages chan Message) {
 		Nickname: "",
 	}
 	for {
-		ln, err := conn.Read(buff)
-		if err != nil {
-			messages <- Message{
-				Type: ClientDisconnected,
-				Client: Client{Conn:conn},
+		text := ""
+		messageComplete := false
+		for ; messageComplete == false ; {
+			ln, err := conn.Read(buff)
+			if err != nil || ln < 1 {
+				messages <- Message{
+					Type: ClientDisconnected,
+					Client: Client{Conn:conn},
+				}
+				return
 			}
-			return
+			text = text + string(buff[0:ln])
+			if strings.HasSuffix(text,PROTOCOL_SUFFIX) { messageComplete = true }
+			text = strings.TrimRight(text, "\r\n")
 		}
-		text := string(buff[0:ln])
 		if strings.HasPrefix(text, PREFIX_NICKNAME) {
 			_, nickname, _ := strings.Cut(text, PREFIX_NICKNAME)
 			cli.Nickname = nickname
-			
 			messages <- Message{
 				Type: ClientJoinedChat,
 				Client: cli,
