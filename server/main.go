@@ -4,12 +4,15 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"time"
+	//"io"
+	//"os"
+	//"unicode"
 )
 
 const (
 	PORT = "10050"
-	PREFIX_NICKNAME = "NICKNAME"
-	LEN_PREFIX_NICKNAME = 8
+	PREFIX_NICKNAME = "HFtgBh2Kqf8Gfpkl6N2Coskw8i6qHO0D"
 )
 
 type MessageType int
@@ -45,20 +48,23 @@ func runServer(messages chan Message) {
 		addr := msg.Client.Conn.RemoteAddr().String()
 		switch msg.Type {
 		case ClientConnected:
-			fmt.Println("User joined from ")
-			fmt.Printf(addr+"...")
+			s := fmt.Sprintf("User joined from %s...",addr)
+			fmt.Println(s)
 			msg.Client.Conn.Write([]byte(PREFIX_NICKNAME))
 		case ClientJoinedChat:
 			clients[addr] = &msg.Client
-			fmt.Println("")
-			fmt.Printf(msg.Client.Nickname)
-			fmt.Printf(" joined...")
+			fmt.Println(msg.Client.Nickname)
+			str := fmt.Sprintf("%s joined the chat",msg.Client.Nickname)
+			fmt.Println(str)
 		case ClientDisconnected:
 			delete(clients,addr)
-			fmt.Println(msg.Client.Nickname," left...")
+			s := fmt.Sprintf("%s left...",msg.Client.Nickname)
+			fmt.Println(s)
+			fmt.Println(msg.Client.Nickname)
 		case NewMessage:
-			fmt.Println(clients[addr].Nickname)
-			fmt.Printf("\n["+clients[addr].Nickname+"]: "+msg.Text)
+			now := time.Now()
+			s := fmt.Sprintf("%s [%s]: %s",now.Format(time.RFC3339),msg.Client.Nickname,msg.Text)
+			fmt.Println(s)
 			for _,client := range clients {
 				if client.Conn.RemoteAddr().String() != addr {
 					client.Conn.Write([]byte(msg.Text))
@@ -66,8 +72,17 @@ func runServer(messages chan Message) {
 			}
 		}
 	}
-	
 }
+
+/*func prepareNickname(input string) string {
+	s := ""
+	for _,c := range input {
+		if unicode.IsPrint(c) { //necessary to remove blank runes that produce new lines...
+			s = s + string(c)
+		}
+	}
+	return s
+}*/
 
 func registerClient(conn net.Conn, messages chan Message) {
 	defer conn.Close()
@@ -75,6 +90,10 @@ func registerClient(conn net.Conn, messages chan Message) {
 	messages <- Message{
 		Type: ClientConnected,
 		Client: Client{Conn:conn},
+	}
+	cli := Client{
+		Conn: conn,
+		Nickname: "",
 	}
 	for {
 		ln, err := conn.Read(buff)
@@ -87,17 +106,17 @@ func registerClient(conn net.Conn, messages chan Message) {
 		}
 		text := string(buff[0:ln])
 		if strings.HasPrefix(text, PREFIX_NICKNAME) {
+			_, nickname, _ := strings.Cut(text, PREFIX_NICKNAME)
+			cli.Nickname = nickname
+			
 			messages <- Message{
 				Type: ClientJoinedChat,
-				Client: Client{
-					Conn: conn,
-					Nickname: string(text[LEN_PREFIX_NICKNAME:len(text)-1]),
-				},
+				Client: cli,
 			}
 		} else {
 			messages <- Message{
 				Type: NewMessage,
-				Client: Client{Conn:conn},
+				Client: cli,
 				Text: text,
 			}
 		}

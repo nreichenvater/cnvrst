@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"bufio"
 	"os"
+	"strings"
 )
 
 const (
 	PORT = "10050"
-	PREFIX_NICKNAME = "NICKNAME"
+	PREFIX_NICKNAME = "HFtgBh2Kqf8Gfpkl6N2Coskw8i6qHO0D"
 )
 
 type MessageType int
@@ -44,7 +45,7 @@ func receiveMessages(conn net.Conn, messages chan Message) {
 }
 
 func main() {
-	conn, err := net.Dial("tcp", "127.0.0.1:"+PORT) //string(PORT)
+	conn, err := net.Dial("tcp", "127.0.0.1:"+PORT)
     if err != nil {
         fmt.Println("Error: ", err)
         return
@@ -61,8 +62,10 @@ func main() {
 		if msg.Type == NicknamePrompt {
 			fmt.Println("Welcome to the chat! Please enter a nickname...")
 			reader := bufio.NewReader(os.Stdin)
-			nickname, _ := reader.ReadString('\n')
-			conn.Write([]byte(PREFIX_NICKNAME+nickname))
+			input, _ := reader.ReadString('\n')
+			nickname := fmt.Sprintf("%s%s",PREFIX_NICKNAME,input)
+			nickname = strings.TrimRight(nickname, "\r\n")
+			conn.Write([]byte(nickname))
 			break
 		}
 	}
@@ -71,6 +74,7 @@ func main() {
 	for {
 		reader := bufio.NewReader(os.Stdin)
 		text, _ := reader.ReadString('\n')
+		text = strings.TrimRight(text, "\r\n")
 		conn.Write([]byte(text))
 	}
 }
