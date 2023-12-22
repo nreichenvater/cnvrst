@@ -6,6 +6,8 @@ import (
 	"bufio"
 	"os"
 	"strings"
+	"github.com/rivo/tview"
+	"github.com/gdamore/tcell/v2"
 )
 
 const (
@@ -45,22 +47,44 @@ func receiveMessages(conn net.Conn, messages chan Message) {
 	}
 }
 
-func getNickname() string {
-	fmt.Println("Welcome to the chat! Please enter a nickname...")
-	reader := bufio.NewReader(os.Stdin)
-	input := ""
-	valid := false
-	for ; valid == false ; {
-		input, _ = reader.ReadString('\n')
-		input = strings.TrimRight(input, "\r\n")
-		if len := len(input); len < 1 || len > 40 {
-			fmt.Println("The nickname must have a length between 1 and 40 characters...")
-			
-		} else {
-			valid = true
-		}
-	}
-	return fmt.Sprintf("%s%s%s",PREFIX_NICKNAME,input,PROTOCOL_SUFFIX)
+func getWelcomePageFlex(pages *tview.Pages, conn net.Conn) (*tview.Flex, *tview.InputField) {
+	welcomeHeadingFlex := tview.NewFlex().
+	AddItem(nil, 0, 1, false).
+	AddItem(tview.NewTextView().SetText("Welcome to the CNVRSTE chatroom!"), 0, 1, false).
+	AddItem(nil, 0, 1, false)
+
+	nicknameInputField := tview.NewInputField().
+		SetLabel("Please enter a nickname: ").
+		SetFieldWidth(20)
+
+	nicknameInputField.SetDoneFunc(func (key tcell.Key){
+			input := nicknameInputField.GetText()
+			if len := len(input); len < 1 || len > 20 {
+				//fmt.Println("The nickname must have a length between 1 and 20 characters...")
+				return
+			}
+			text := fmt.Sprintf("%s%s%s",PREFIX_NICKNAME,input,PROTOCOL_SUFFIX)
+			conn.Write([]byte(text))
+			pages.SwitchToPage("chat")
+		})
+		
+
+	welcomeNicknameFlex := tview.NewFlex().
+		AddItem(nil, 0, 1, false).
+		AddItem(nicknameInputField, 0, 4, true).
+		AddItem(nil, 0, 1, false)
+
+	welcomePageFlex := tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
+			AddItem(nil, 0, 1, false).
+			AddItem(welcomeHeadingFlex, 0, 1, false).
+			AddItem(welcomeNicknameFlex, 0, 1, false).
+			AddItem(nil, 0, 1, false), 0, 2, false).
+		AddItem(nil, 0, 1, false)
+	
+	return welcomePageFlex, nicknameInputField
 }
 
 func main() {
@@ -75,12 +99,26 @@ func main() {
 
 	go receiveMessages(conn, messages)
 
-	//wait for prompt to enter nickname
+
+	app := tview.NewApplication()
+	pages := tview.NewPages()
+        
+	chatPageFlex := tview.NewFlex().
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewTextView().SetText("chat"), 0, 1, false).
+		AddItem(nil, 0, 1, false)
+	
+	welcomePageFlex, nicknameInputField := getWelcomePageFlex(pages, conn)
+	pages.AddPage("Welcome", welcomePageFlex, true, true)
+	pages.AddPage("chat", chatPageFlex, true, false)
+
+	//wait for prompt to enter nickname, then show page
 	for {
 		msg := <- messages
 		if msg.Type == NicknamePrompt {
-			nickname := getNickname()
-			conn.Write([]byte(nickname))
+			if err := app.SetRoot(pages, true).SetFocus(nicknameInputField).Run(); err != nil {
+				panic(err)
+			}
 			break
 		}
 	}
