@@ -42,12 +42,15 @@ func runServer(messages chan Message) {
 		case ClientConnected:
 			s := fmt.Sprintf("User joined from %s...",addr)
 			fmt.Println(s)
-			msg.Client.Conn.Write([]byte(PREFIX_NICKNAME))
+			msg.Client.Conn.Write([]byte(fmt.Sprintf("%s%s",PREFIX_NICKNAME,PROTOCOL_SUFFIX)))
 		case ClientJoinedChat:
 			clients[addr] = &msg.Client
 			fmt.Println(msg.Client.Nickname)
-			str := fmt.Sprintf("%s joined the chat",msg.Client.Nickname)
+			str := fmt.Sprintf("%s joined the chat%s",msg.Client.Nickname,PROTOCOL_SUFFIX)
 			fmt.Println(str)
+			for _,client := range clients {
+				client.Conn.Write([]byte(str))
+			}
 		case ClientDisconnected:
 			delete(clients,addr)
 			s := fmt.Sprintf("%s left...",msg.Client.Nickname)
@@ -58,12 +61,10 @@ func runServer(messages chan Message) {
 			timestamp := fmt.Sprintf("%d-%02d-%02d %02d:%02d:%02d", 
 				now.Year(), now.Month(), now.Day(), 
 				now.Hour(), now.Minute(), now.Second()) 
-			s := fmt.Sprintf("%s [%s]: %s",timestamp,msg.Client.Nickname,msg.Text)
+			s := fmt.Sprintf("%s [%s]: %s%s",timestamp,msg.Client.Nickname,msg.Text,PROTOCOL_SUFFIX)
 			fmt.Println(s)
 			for _,client := range clients {
-				if client.Conn.RemoteAddr().String() != addr {
-					client.Conn.Write([]byte(msg.Text))
-				}
+				client.Conn.Write([]byte(s))
 			}
 		}
 	}

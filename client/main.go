@@ -3,15 +3,13 @@ package main
 import (
 	"net"
 	"fmt"
-	"bufio"
-	"os"
 	"strings"
 	"github.com/rivo/tview"
 	"github.com/gdamore/tcell/v2"
 )
 
 const (
-	PORT = "10050"
+	PORT = 10050
 	PREFIX_NICKNAME = "HFtgBh2Kqf8Gfpkl6N2Coskw8i6qHO0D"
 	PROTOCOL_SUFFIX = "\r\n\r\n"
 )
@@ -28,22 +26,29 @@ type Message struct {
 	Text string
 }
 
-func receiveMessages(conn net.Conn, messages chan Message) {
+func receiveMessages(conn net.Conn, messages chan Message, textView *tview.TextView) {
 	buf := make([]byte,256)
 	for {
-		len, err := conn.Read(buf)
-		if err != nil {
-			fmt.Println("Error: ",err)
-			return
-		}
-		msg := string(buf[0:len])
-		if msg == PREFIX_NICKNAME {
-			messages <- Message{
-				Type: NicknamePrompt,
+		text := ""
+		messageComplete := false
+		for ; messageComplete == false ; {
+			ln, err := conn.Read(buf)
+			if err != nil {
+				fmt.Println("Error: ",err)
+				return
 			}
-			continue
+			text = text + string(buf[0:ln])
+			if strings.HasSuffix(text,PROTOCOL_SUFFIX) { messageComplete = true }
+			text = strings.TrimRight(text, PROTOCOL_SUFFIX)
+			if text == PREFIX_NICKNAME {
+				messages <- Message{
+					Type: NicknamePrompt,
+				}
+			} else {
+				fmt.Fprintf(textView, "\n%s", tview.Escape(text))
+				textView.ScrollToEnd()
+			}
 		}
-		fmt.Println(msg)
 	}
 }
 
@@ -54,20 +59,18 @@ func getWelcomePageFlex(pages *tview.Pages, conn net.Conn) (*tview.Flex, *tview.
 	AddItem(nil, 0, 1, false)
 
 	nicknameInputField := tview.NewInputField().
-		SetLabel("Please enter a nickname: ").
+		SetLabel("Please enter a nickname (1-20 characters): ").
 		SetFieldWidth(20)
 
 	nicknameInputField.SetDoneFunc(func (key tcell.Key){
 			input := nicknameInputField.GetText()
 			if len := len(input); len < 1 || len > 20 {
-				//fmt.Println("The nickname must have a length between 1 and 20 characters...")
 				return
 			}
 			text := fmt.Sprintf("%s%s%s",PREFIX_NICKNAME,input,PROTOCOL_SUFFIX)
 			conn.Write([]byte(text))
 			pages.SwitchToPage("chat")
 		})
-		
 
 	welcomeNicknameFlex := tview.NewFlex().
 		AddItem(nil, 0, 1, false).
@@ -87,8 +90,18 @@ func getWelcomePageFlex(pages *tview.Pages, conn net.Conn) (*tview.Flex, *tview.
 	return welcomePageFlex, nicknameInputField
 }
 
+func getChatPageFlex(pages *tview.Pages, textView *tview.TextView) (*tview.Flex, *tview.InputField) {
+	flex := tview.NewFlex().SetDirection(tview.FlexRow)
+	textView.SetDynamicColors(true).SetBorder(true)
+	input := tview.NewInputField()
+	flex.AddItem(textView, 0, 15, false)
+	flex.AddItem(input, 0, 1, true)
+	return flex, input	
+}
+
 func main() {
-	conn, err := net.Dial("tcp", "127.0.0.1:"+PORT)
+	connstr := fmt.Sprintf("%s%d","127.0.0.1:",PORT)
+	conn, err := net.Dial("tcp",connstr)
     if err != nil {
         fmt.Println("Error: ", err)
         return
@@ -97,38 +110,37 @@ func main() {
 
 	messages := make(chan Message)
 
-	go receiveMessages(conn, messages)
+	app := tview.NewApplication().EnableMouse(true)
+	textView := tview.NewTextView().SetChangedFunc(func() {
+		app.Draw()
+	}).SetScrollable(true)
 
+	go receiveMessages(conn,messages,textView)
 
-	app := tview.NewApplication()
 	pages := tview.NewPages()
-        
-	chatPageFlex := tview.NewFlex().
-		AddItem(nil, 0, 1, false).
-		AddItem(tview.NewTextView().SetText("chat"), 0, 1, false).
-		AddItem(nil, 0, 1, false)
 	
 	welcomePageFlex, nicknameInputField := getWelcomePageFlex(pages, conn)
-	pages.AddPage("Welcome", welcomePageFlex, true, true)
+	pages.AddPage("welcome", welcomePageFlex, true, true)
+
+	
+	chatPageFlex, chatInputField := getChatPageFlex(pages,textView)
 	pages.AddPage("chat", chatPageFlex, true, false)
 
-	//wait for prompt to enter nickname, then show page
+	chatInputField.SetDoneFunc(func (key tcell.Key){
+		input := chatInputField.GetText()
+		if len(input) < 1 { return }
+		text := fmt.Sprintf("%s%s",input,PROTOCOL_SUFFIX)
+		conn.Write([]byte(text))
+		chatInputField.SetText("")
+	})
+
 	for {
 		msg := <- messages
-		if msg.Type == NicknamePrompt {
+		switch msg.Type {
+		case NicknamePrompt:
 			if err := app.SetRoot(pages, true).SetFocus(nicknameInputField).Run(); err != nil {
 				panic(err)
 			}
-			break
 		}
-	}
-
-	//wait for and send new message
-	for {
-		reader := bufio.NewReader(os.Stdin)
-		text, _ := reader.ReadString('\n')
-		text = strings.TrimRight(text, "\r\n")
-		text = fmt.Sprintf("%s%s",text,PROTOCOL_SUFFIX)
-		conn.Write([]byte(text))
 	}
 }
