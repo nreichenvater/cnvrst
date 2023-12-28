@@ -55,7 +55,7 @@ func receiveMessages(conn net.Conn, messages chan Message, textView *tview.TextV
 func getWelcomePageFlex(pages *tview.Pages, conn net.Conn) (*tview.Flex, *tview.InputField) {
 	welcomeHeadingFlex := tview.NewFlex().
 	AddItem(nil, 0, 1, false).
-	AddItem(tview.NewTextView().SetText("Welcome to the CNVRSTE chatroom!"), 0, 1, false).
+	AddItem(tview.NewTextView().SetText("Welcome to the CNVRST chatroom!"), 0, 1, false).
 	AddItem(nil, 0, 1, false)
 
 	nicknameInputField := tview.NewInputField().
